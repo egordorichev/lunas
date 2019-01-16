@@ -38,7 +38,10 @@ var TokenType = {
 	TRUE : "true",
 	LOCAL : "local",
 	WHILE : "while",
-	NOT : "not"
+	NOT : "not",
+	END : "end",
+	THEN : "then",
+	ELSEIF : "elseif"
 }
 
 var keywords = {
@@ -54,7 +57,10 @@ var keywords = {
 	"true" : TokenType.TRUE,
 	"local" : TokenType.LOCAL,
 	"while" : TokenType.WHILE,
-	"not" : TokenType.NOT
+	"not" : TokenType.NOT,
+	"end" : TokenType.END,
+	"then" : TokenType.THEN,
+	"elseif" : TokenType.ELSEIF
 }
 
 var scanner = {}
@@ -201,7 +207,6 @@ scanner.scanToken = function() {
 		var name = scanner.source.substring(scanner.start, scanner.position)
 		var keyword = keywords[name]
 
-		console.log(name + " " + keyword)
 		if (keyword) {
 			return scanner.createToken(keyword)
 		}
@@ -220,6 +225,7 @@ scanner.scanToken = function() {
 		case ".": return scanner.createToken(TokenType.DOT)
 		case ",": return scanner.createToken(TokenType.COMMA)
 		case "/": return scanner.createToken(TokenType.SLASH)
+		case "=": return scanner.createToken(TokenType.EQUAL)
 
 		case ">": return scanner.decideToken("=", TokenType.GREATER_EQUAL, TokenType.GREATER)
 		case "<": return scanner.decideToken("=", TokenType.LESS_EQUAL, TokenType.LESS)
@@ -260,14 +266,14 @@ var parser = {}
 parser.error = function(message, token) {
 	parser.hadError = true
 	console.error(`[line ${token ? token.line : "?"}] Error${token ? " at " + getLiteral(token) : ""}: ${message}`)
-
-	return scanner.createToken(TokenType.ERROR)
 }
 
 parser.consume = function(expected, error) {
 	if (!parser.match(expected)) {
 		parser.error(error, scanner.current)
 	}
+
+	return scanner.previous
 }
 
 parser.advance = function() {
@@ -298,6 +304,10 @@ function getLiteral(token) {
 }
 
 parser.parsePrimary = function() {
+	if (parser.match(TokenType.IDENTIFIER)) {
+		return getLiteral(scanner.previous)
+	}
+
 	if (parser.match(TokenType.NUMBER)) {
 		return parseFloat(getLiteral(scanner.previous))
 	}
@@ -326,6 +336,8 @@ parser.parsePrimary = function() {
 	}
 
 	console.error("Unexpected token " + scanner.current.type)
+	throw new Error("Something went badly wrong!")
+
 	scanner.next()
 
 	return ""
@@ -385,19 +397,107 @@ parser.parseEquality = function() {
 	return expr
 }
 
+parser.parseAssigment = function() {
+	var expr = parser.parseEquality()
+
+	if (parser.match(TokenType.EQUAL)) {
+		return [ expr, " = ", parser.parseAssigment() ].join("")
+	}
+
+	return expr
+}
+
 parser.parseExpression = function() {
-	return parser.parseEquality()
+	return parser.parseAssigment()
+}
+
+parser.parseExpressionStatement = function() {
+	return parser.parseExpression() + "\n"
+}
+
+parser.parseEmptyBlock = function(a, b) {
+	var block = []
+	var oldDepth = parser.depth
+
+	parser.depth += "\t"
+
+	var type = scanner.current.type
+
+	while (type != TokenType.END && type != TokenType.EOF && type != a && type != b) {
+		block.push(parser.depth + parser.parseStatement())
+		type = scanner.current.type
+	}
+
+	parser.depth = oldDepth
+	block.push("}")
+
+	return block.join("")
+}
+
+parser.parseBlock = function(a, b) {
+	var code = parser.parseEmptyBlock(a, b)
+
+	if (a && scanner.current.type == a) {
+	} else if (b && scanner.current.type == b) {
+	} else {
+		parser.consume(TokenType.END, "end expected to close the block")
+	}
+
+	return code
+}
+
+parser.parseStatement = function() {
+	if (parser.match(TokenType.IF)) {
+		var condition = parser.parseExpression()
+		parser.consume(TokenType.THEN, "then expected after condition")
+
+		var body = parser.parseBlock(TokenType.ELSE, TokenType.ELSEIF)
+		var statement = [ "if (", condition, ") {\n", body ]
+
+		while (parser.match(TokenType.ELSEIF)) {
+			var condition = parser.parseExpression()
+			parser.consume(TokenType.THEN, "then expected after condition")
+
+			var body = parser.parseEmptyBlock(TokenType.ELSE, TokenType.ELSEIF)
+			statement.push([ " else if (", condition, ") {\n", body ].join(""))
+		}
+
+		if (parser.match(TokenType.ELSE)) {
+			statement.push([ " else {\n", parser.parseEmptyBlock() ].join(""))
+		}
+
+		return statement.join("")
+	}
+
+	return parser.parseExpressionStatement()
+}
+
+parser.parseDeclaration = function() {
+	if (parser.match(TokenType.LOCAL)) {
+		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Expected local variable name"))
+		var init = "null"
+
+		if (parser.match(TokenType.EQUAL)) {
+			init = parser.parseExpression()
+		}
+
+		return [ "var ", name, " = ", init ].join("")
+	}
+
+	return parser.parseStatement()
 }
 
 parser.parse = function(token) {
-	parser.hadError = false
-	return parser.parseExpression()
+	return parser.parseDeclaration()
 }
 
 var lunas = {}
 
 lunas.compile = function(source) {
 	scanner.setSource(source)
+	parser.hadError = false
+	parser.depth = ""
+
 	var js = []
 
 	while (true) {
