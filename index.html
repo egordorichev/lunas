@@ -8,13 +8,10 @@
   </head>
   <body>
 <textarea id="lua_code" rows="8" cols="80">
-	ar = { x = 32 }
-	ar.__index = function(self, i)
-	 return i
-	end
+local a = {}
+local b = {}
 
-	setmetatable(ar, ar)
-	print(ar["i"])
+10 == 20
 </textarea>
     <div id="js_code">
 

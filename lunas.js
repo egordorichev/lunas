@@ -606,9 +606,11 @@ parser.parseComparison = function() {
 
 parser.parseEquality = function() {
 	var expr = parser.parseComparison()
+	console.log(scanner.current.type)
 
 	while (parser.matches([ TokenType.EQUAL_EQUAL, TokenType.TILDE_EQUAL ])) {
-		expr = [ expr, " ", getLiteral(scanner.previous), " ", parser.parseComparison() ].join("")
+		parser.usedFunctions["__eq"] = true
+		expr = [ scanner.previous.type == TokenType.TILDE_EQUAL ? "!__eq(" : "__eq(", expr, ", ",  parser.parseComparison(), ")" ].join("")
 	}
 
 	return expr
@@ -920,5 +922,15 @@ std.__index = `\nfunction __index(a, i) {
 		return a.__metatable.__index(a, i)
 	} else {
 		return a[i]
+	}
+}`
+
+std.__eq = `\nfunction __index(a, b) {
+	if (typeof a === "object" && typeof b === "object" && typeof a.__metatable === "object"
+			&& a.__metatable == b.__metatable) {
+
+		return a.__metatable.__eq(a, b)
+	} else {
+		return a == b
 	}
 }`
