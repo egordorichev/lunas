@@ -330,6 +330,29 @@ parser.parsePrimary = function() {
 		return "null"
 	}
 
+	if (parser.match(TokenType.FUNCTION)) {
+		parser.consume(TokenType.LEFT_PAREN, ") expected")
+		var call = [ "function(" ]
+
+		if (scanner.current.type != TokenType.RIGHT_PAREN) {
+			do {
+				call.push(parser.parseExpression())
+
+				if (scanner.current.type == TokenType.COMMA) {
+					call.push(", ")
+				}
+			} while (parser.match(TokenType.COMMA))
+		}
+
+		parser.consume(TokenType.RIGHT_PAREN, ") expected")
+
+		call.push(")")
+		call.push(" {\n")
+		call.push(parser.parseBlock())
+
+		return call.join("")
+	}
+
 	if (parser.match(TokenType.LEFT_PAREN)) {
 		var expr = parser.parseExpression()
 		parser.consume(TokenType.RIGHT_PAREN, ") expected")
@@ -345,6 +368,39 @@ parser.parsePrimary = function() {
 	return ""
 }
 
+parser.parseCall = function() {
+	var expr = parser.parsePrimary()
+
+	while (parser.match(TokenType.LEFT_PAREN)) {
+		var call = []
+
+		if (expr == "print" && !parser.usedPrint) {
+			parser.usedPrint = true
+			call.push("print = console.log\n")
+		}
+
+		call.push(expr)
+		call.push("(")
+
+		if (scanner.current.type != TokenType.RIGHT_PAREN) {
+			do {
+				call.push(parser.parseExpression())
+
+				if (scanner.current.type == TokenType.COMMA) {
+					call.push(", ")
+				}
+			} while (parser.match(TokenType.COMMA))
+		}
+
+		parser.consume(TokenType.RIGHT_PAREN, ") expected")
+
+		call.push(")")
+		expr = call.join("")
+	}
+
+	return expr
+}
+
 parser.parseUnary = function() {
 	if (parser.matches([ TokenType.MINUS, TokenType.NOT ])) {
 		var literal = getLiteral(scanner.previous)
@@ -356,7 +412,7 @@ parser.parseUnary = function() {
 		return [ literal, parser.parseUnary() ].join("")
 	}
 
-	return parser.parsePrimary()
+	return parser.parseCall()
 }
 
 parser.parseMultiplication = function() {
@@ -498,6 +554,29 @@ parser.parseStatement = function() {
 		return [ "while (", condition, ") {\n", parser.parseBlock() ].join("")
 	}
 
+	if (parser.match(TokenType.FOR)) {
+		var local = parser.match(TokenType.LOCAL)
+		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Variable name expected"))
+
+		parser.consume(TokenType.EQUAL, "= expected")
+
+		var from = parser.parseExpression()
+		parser.consume(TokenType.COMMA, ", expected")
+		var to = parser.parseExpression()
+		var step = 1
+
+		if (parser.match(TokenType.COMMA)) {
+			step = parseFloat(parser.parseExpression())
+		}
+
+		parser.consume(TokenType.DO, "do expected")
+
+		var body = parser.parseBlock()
+
+		return [ "for (", local ? "var " + name : name, " = ", parseFloat(from), "; ", name,
+			step > 0 ? " < " : " > ", parseFloat(to), "; ", name, " += ", step, ") {\n", body ].join("")
+	}
+
 	return parser.parseExpressionStatement()
 }
 
@@ -513,11 +592,33 @@ parser.parseDeclaration = function() {
 		return [ "var ", name, " = ", init ].join("")
 	}
 
-	return parser.parseStatement()
-}
+	if (parser.match(TokenType.FUNCTION)) {
+		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Function name expected"))
 
-parser.parse = function(token) {
-	return parser.parseDeclaration()
+		parser.consume(TokenType.LEFT_PAREN, ") expected")
+		var call = [ "function ", name, "(" ]
+
+		if (scanner.current.type != TokenType.RIGHT_PAREN) {
+			do {
+				call.push(parser.parseExpression())
+
+				if (scanner.current.type == TokenType.COMMA) {
+					call.push(", ")
+				}
+			} while (parser.match(TokenType.COMMA))
+		}
+
+		parser.consume(TokenType.RIGHT_PAREN, ") expected")
+
+		call.push(")")
+		call.push(" {\n")
+		call.push(parser.parseBlock())
+		call.push("\n")
+
+		return call.join("")
+	}
+
+	return parser.parseStatement()
 }
 
 var lunas = {}
@@ -526,13 +627,13 @@ lunas.compile = function(source) {
 	scanner.setSource(source)
 	parser.hadError = false
 	parser.depth = ""
+	parser.usedPrint = false
 
 	var js = []
+	scanner.next()
 
 	while (true) {
-		var token = scanner.next()
-
-		if (token.type == TokenType.EOF) {
+		if (scanner.current.type == TokenType.EOF) {
 			if (parser.hadError) {
 				return null
 			}
@@ -540,6 +641,6 @@ lunas.compile = function(source) {
 			return js.join("")
 		}
 
-		js.push(parser.parse(token))
+		js.push(parser.parseDeclaration())
 	}
 }
