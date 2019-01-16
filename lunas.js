@@ -1,3 +1,13 @@
+/*
+ * Currently not implemented:
+ * table.__newindex
+ * table.__mode
+ * table.__tostring
+ * table.__pairs
+ * table.__ipairs
+ * table.__gc
+ */
+
 var TokenType = {
 	EOF : "EOF",
 	ERROR : "Error",
@@ -17,6 +27,9 @@ var TokenType = {
 	COLON : ":",
 	SLASH_SLASH : "//",
 	CELL : "#",
+	PERCENT : "%",
+	CARET : "^",
+	DOT_DOT : "..",
 
 	TILDE : "~",
 	TILDE_EQUAL : "~=",
@@ -232,16 +245,18 @@ scanner.scanToken = function() {
 		case "+": return scanner.createToken(TokenType.PLUS)
 		case "-": return scanner.createToken(TokenType.MINUS)
 		case "*": return scanner.createToken(TokenType.STAR)
-		case ".": return scanner.createToken(TokenType.DOT)
 		case ",": return scanner.createToken(TokenType.COMMA)
 		case "=": return scanner.createToken(TokenType.EQUAL)
 		case "#": return scanner.createToken(TokenType.CELL)
+		case "%": return scanner.createToken(TokenType.PERCENT)
+		case "^": return scanner.createToken(TokenType.CARET)
 
 		case "/": return scanner.decideToken("/", TokenType.SLASH_SLASH, TokenType.SLASH)
 		case ">": return scanner.decideToken("=", TokenType.GREATER_EQUAL, TokenType.GREATER)
 		case "<": return scanner.decideToken("=", TokenType.LESS_EQUAL, TokenType.LESS)
 		case "~": return scanner.decideToken("=", TokenType.TILDE_EQUAL, TokenType.TILDE)
 		case "=": return scanner.decideToken("=", TokenType.EQUAL_EQUAL, TokenType.EQUAL)
+		case ".": return scanner.decideToken(".", TokenType.DOT_DOT, TokenType.DOT)
 
 		case "\"": {
 			while (scanner.peek() != "\"" && !scanner.isAtEnd()) {
@@ -532,7 +547,10 @@ var metaMethods = {
 	"-" : "__sub",
 	"*" : "__mul",
 	"/" : "__div",
-	"//" : "__idiv"
+	"//" : "__idiv",
+	"^" : "__pow",
+	"%" : "__mod",
+	".." : "__concat"
 }
 
 var unaryMetaMethods = {
@@ -555,7 +573,7 @@ parser.parseUnary = function() {
 parser.parseMultiplication = function() {
 	var expr = parser.parseUnary()
 
-	while (parser.matches([ TokenType.STAR, TokenType.SLASH, TokenType.SLASH_SLASH ])) {
+	while (parser.matches([ TokenType.STAR, TokenType.SLASH, TokenType.SLASH_SLASH, TokenType.PERCENT, TokenType.CARET ])) {
 		var name = metaMethods[getLiteral(scanner.previous)]
 		parser.metaBinaryMethods[name] = true
 		expr = [ name, "(", expr, ", ", parser.parseUnary(), ")" ].join("")
@@ -567,7 +585,7 @@ parser.parseMultiplication = function() {
 parser.parseAddition = function() {
 	var expr = parser.parseMultiplication()
 
-	while (parser.matches([ TokenType.PLUS, TokenType.MINUS ])) {
+	while (parser.matches([ TokenType.PLUS, TokenType.MINUS, TokenType.DOT_DOT ])) {
 		var name = metaMethods[getLiteral(scanner.previous)]
 		parser.metaBinaryMethods[name] = true
 		expr = [ name, "(", expr, ", ", parser.parseUnary(), ")" ].join("")
@@ -831,6 +849,12 @@ lunas.compile = function(source) {
 
 			for (var name in parser.metaBinaryMethods) {
 				var op = getKeyByValue(metaMethods, name)
+
+				if (name == "__concat") {
+					op = "+"
+				} else if (name == "__pow") {
+					op = "**"
+				}
 
 				data.push(`function ${name}(a, b) {
 	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.${name} === "function") {
