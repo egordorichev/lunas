@@ -662,10 +662,16 @@ parser.parseStatement = function() {
 			step > 0 ? " < " : " > ", parseFloat(to), "; ", name, " += ", step, ") {\n", body ].join("")
 	}
 
-	return parser.parseExpressionStatement()
-}
+	if (parser.match(TokenType.RETURN)) {
+		var next = scanner.current.type
 
-parser.parseDeclaration = function() {
+		if (next == TokenType.END || next == TokenType.ELSE || next == TokenType.ELSEIF) {
+			return "return null\n"
+		} else {
+			return [ "return ", parser.parseExpression(), "\n" ].join("")
+		}
+	}
+
 	if (parser.match(TokenType.LOCAL)) {
 		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Expected local variable name"))
 		var init = "null"
@@ -703,7 +709,7 @@ parser.parseDeclaration = function() {
 		return call.join("")
 	}
 
-	return parser.parseStatement()
+	return parser.parseExpressionStatement()
 }
 
 var lunas = {}
@@ -726,6 +732,6 @@ lunas.compile = function(source) {
 			return js.join("")
 		}
 
-		js.push(parser.parseDeclaration())
+		js.push(parser.parseStatement())
 	}
 }
