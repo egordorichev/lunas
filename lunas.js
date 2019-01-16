@@ -6,6 +6,8 @@ var TokenType = {
 	RIGHT_PAREN : ")",
 	LEFT_BRACE : "{",
 	RIGHT_BRACE : "}",
+	LEFT_BRACKET : "[",
+	RIGHT_BRACKET : "]",
 	COMMA : ",",
 	DOT : ".",
 	MINUS : "-",
@@ -221,6 +223,8 @@ scanner.scanToken = function() {
 		case ")": return scanner.createToken(TokenType.RIGHT_PAREN)
 		case "{": return scanner.createToken(TokenType.LEFT_BRACE)
 		case "}": return scanner.createToken(TokenType.RIGHT_BRACE)
+		case "[": return scanner.createToken(TokenType.LEFT_BRACKET)
+		case "]": return scanner.createToken(TokenType.RIGHT_BRACKET)
 		case "-": return scanner.createToken(TokenType.MINUS)
 		case "+": return scanner.createToken(TokenType.PLUS)
 		case "*": return scanner.createToken(TokenType.STAR)
@@ -330,6 +334,79 @@ parser.parsePrimary = function() {
 		return "null"
 	}
 
+	if (parser.match(TokenType.LEFT_BRACE)) {
+		var decided = false
+		var array = false
+		var expression = []
+
+		while (!parser.match(TokenType.RIGHT_BRACE)) {
+			var hadBracket = false
+
+			if (parser.match(TokenType.LEFT_BRACKET)) {
+				if (!decided) {
+					decided = true
+					array = false
+
+					expression.push("{ ")
+				} else if (array) {
+					parser.error("Syntax error");
+				}
+
+				hadBracket = true
+			}
+
+			var key = parser.parsePrimary()
+
+			if (hadBracket) {
+				parser.consume(TokenType.RIGHT_BRACKET, "] expected")
+			}
+
+			if (parser.match(TokenType.COMMA) || parser.match(TokenType.RIGHT_BRACE)) {
+				if (!decided) {
+					decided = true
+					array = true
+
+					expression.push("[ 0, ")
+				} else if (!array) {
+					parser.error("Syntax error");
+				}
+
+				expression.push(key)
+
+				if (scanner.previous.type == TokenType.RIGHT_BRACE) {
+					expression.push(" ]\n")
+					break
+				} else {
+					expression.push(", ")
+				}
+			} else {
+				parser.consume(TokenType.EQUAL, "= expected")
+
+				if (!decided) {
+					decided = true
+					array = false
+
+					expression.push("{ ")
+				} else if (array) {
+					parser.error("Syntax error");
+				}
+
+				expression.push(key)
+				expression.push(" : ")
+				expression.push(parser.parseExpression())
+
+				if (parser.match(TokenType.RIGHT_BRACE)) {
+					expression.push(" }\n")
+					break
+				} else {
+					expression.push(", ")
+				}
+			}
+		}
+
+		return expression.join("")
+	}
+
 	if (parser.match(TokenType.FUNCTION)) {
 		parser.consume(TokenType.LEFT_PAREN, ") expected")
 		var call = [ "function(" ]
@@ -370,6 +447,14 @@ parser.parsePrimary = function() {
 
 parser.parseCall = function() {
 	var expr = parser.parsePrimary()
+
+	while (parser.match(TokenType.LEFT_BRACKET)) {
+		var index = parser.parseExpression()
+
+		parser.consume(TokenType.RIGHT_BRACKET, "] expected")
+
+		expr = [ expr, "[", index, "]" ].join("")
+	}
 
 	while (parser.match(TokenType.LEFT_PAREN)) {
 		var call = []
