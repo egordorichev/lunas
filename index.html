@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>lunas</title>
+    <script type="text/javascript" src="lunas.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+<textarea id="lua_code" rows="8" cols="80">
+10
+</textarea>
+    <div id="js_code">
+
+    </div>
+		<div id="output">
+
+		</div>
+    <script>
+var lua = document.getElementById("lua_code")
+var js = document.getElementById("js_code")
+var output = document.getElementById("output")
+
+lua.addEventListener('input', function() {
+  compile()
+}, false);
+
+function compile() {
+	console.clear()
+	output.innerHTML = ""
+	var code = lunas.compile(lua.value)
+
+	if (code) {
+		js.innerHTML = code
+		output.innerHTML = eval(code)
+	}
+}
+
+compile()
+    </script>
+  </body>
+</html>

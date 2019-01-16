@@ -1,0 +1,24 @@
+* {
+  padding: 0;
+  margin: 0;
+}
+
+#lua_code {
+  width: 100%;
+  border: none;
+  border-bottom: 2px solid lightgray;
+  box-sizing: border-box;
+}
+
+#js_code {
+  white-space: pre-wrap;
+}
+
+*:focus {
+    outline: none;
+}
+
+#output {
+	background-color: lightgray;
+	padding: 10px;
+}
