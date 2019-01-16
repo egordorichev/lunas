@@ -14,6 +14,7 @@ var TokenType = {
 	PLUS : "+",
 	SLASH : "/",
 	STAR : "*",
+	COLON : ":",
 
 	TILDE : "~",
 	TILDE_EQUAL : "~=",
@@ -140,7 +141,6 @@ scanner.skipWhitespace = function() {
 			case "\r":
 			case "\t":
 				scanner.advance()
-				// Ignore whitespace.
 				break
 
 			case "\n":
@@ -148,8 +148,9 @@ scanner.skipWhitespace = function() {
 				scanner.line++;
 				break
 
-			case "/":
-				if (scanner.peekNext() == "/") {
+			// TODO: multiline comment
+			case "-":
+				if (scanner.peekNext() == "-") {
 					while (!scanner.isAtEnd() && scanner.peek() != "\n") {
 						scanner.advance()
 					}
@@ -225,8 +226,9 @@ scanner.scanToken = function() {
 		case "}": return scanner.createToken(TokenType.RIGHT_BRACE)
 		case "[": return scanner.createToken(TokenType.LEFT_BRACKET)
 		case "]": return scanner.createToken(TokenType.RIGHT_BRACKET)
-		case "-": return scanner.createToken(TokenType.MINUS)
+		case ":": return scanner.createToken(TokenType.COLON)
 		case "+": return scanner.createToken(TokenType.PLUS)
+		case "-": return scanner.createToken(TokenType.MINUS)
 		case "*": return scanner.createToken(TokenType.STAR)
 		case ".": return scanner.createToken(TokenType.DOT)
 		case ",": return scanner.createToken(TokenType.COMMA)
@@ -311,7 +313,14 @@ function getLiteral(token) {
 
 parser.parsePrimary = function() {
 	if (parser.match(TokenType.IDENTIFIER)) {
-		return getLiteral(scanner.previous)
+		var literal = getLiteral(scanner.previous)
+
+		if (!parser.usedPrint && expr == "print") {
+			parser.usedPrint = true
+			call.push("print = console.log\n")
+		}
+
+		return literal
 	}
 
 	if (parser.match(TokenType.NUMBER)) {
@@ -456,31 +465,42 @@ parser.parseCall = function() {
 		expr = [ expr, "[", index, "]" ].join("")
 	}
 
-	while (parser.match(TokenType.LEFT_PAREN)) {
-		var call = []
+	while (true) {
+		if (parser.match(TokenType.LEFT_PAREN)) {
+			var call = []
 
-		if (expr == "print" && !parser.usedPrint) {
-			parser.usedPrint = true
-			call.push("print = console.log\n")
+			call.push(expr)
+			call.push("(")
+
+			if (parser.addSelf) {
+				call.push(parser.addSelf)
+				parser.addSelf = null
+			}
+
+			if (scanner.current.type != TokenType.RIGHT_PAREN) {
+				do {
+					call.push(parser.parseExpression())
+
+					if (scanner.current.type == TokenType.COMMA) {
+						call.push(", ")
+					}
+				} while (parser.match(TokenType.COMMA))
+			}
+
+			parser.consume(TokenType.RIGHT_PAREN, ") expected")
+
+			call.push(")")
+			expr = call.join("")
+		} else if (parser.match(TokenType.DOT) || parser.match(TokenType.COLON)) {
+			if (scanner.previous.type == TokenType.COLON) {
+					parser.addSelf = expr
+			}
+
+			var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "property name expected"))
+			expr = [ expr, ".", name ].join("")
+		} else {
+			break
 		}
-
-		call.push(expr)
-		call.push("(")
-
-		if (scanner.current.type != TokenType.RIGHT_PAREN) {
-			do {
-				call.push(parser.parseExpression())
-
-				if (scanner.current.type == TokenType.COMMA) {
-					call.push(", ")
-				}
-			} while (parser.match(TokenType.COMMA))
-		}
-
-		parser.consume(TokenType.RIGHT_PAREN, ") expected")
-
-		call.push(")")
-		expr = call.join("")
 	}
 
 	return expr
@@ -609,6 +629,60 @@ parser.parseBlock = function(a, b) {
 	return code
 }
 
+parser.parseFunction = function() {
+	var name = []
+	var lastName
+	var call
+	var addSelf = false
+
+	name.push(getLiteral(parser.consume(TokenType.IDENTIFIER, "Function name expected")))
+
+	while (parser.match(TokenType.DOT) || parser.match(TokenType.COLON)) {
+		if (scanner.previous.type == TokenType.COLON) {
+			addSelf = true
+		}
+
+		name.push(".")
+		lastName = getLiteral(parser.consume(TokenType.IDENTIFIER, "Function name expected"))
+		name.push(lastName)
+	}
+
+	name = name.join("")
+	parser.consume(TokenType.LEFT_PAREN, ") expected")
+
+	if (lastName) {
+		call = [ name, " = function(" ]
+	} else {
+		call = [ "function ", name, "(" ]
+	}
+
+	if (scanner.current.type != TokenType.RIGHT_PAREN) {
+		if (addSelf) {
+			addSelf = false
+			call.push("self,")
+		}
+
+		do {
+			call.push(parser.parseExpression())
+
+			if (scanner.current.type == TokenType.COMMA) {
+				call.push(", ")
+			}
+		} while (parser.match(TokenType.COMMA))
+	} else if (addSelf) {
+		call.push("self")
+	}
+
+	parser.consume(TokenType.RIGHT_PAREN, ") expected")
+
+	call.push(")")
+	call.push(" {\n")
+	call.push(parser.parseBlock())
+	call.push("\n")
+
+	return call.join("")
+}
+
 parser.parseStatement = function() {
 	if (parser.match(TokenType.IF)) {
 		var condition = parser.parseExpression()
@@ -673,6 +747,10 @@ parser.parseStatement = function() {
 	}
 
 	if (parser.match(TokenType.LOCAL)) {
+		if (parser.match(TokenType.FUNCTION)) {
+			return parser.parseFunction()
+		}
+
 		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Expected local variable name"))
 		var init = "null"
 
@@ -684,29 +762,7 @@ parser.parseStatement = function() {
 	}
 
 	if (parser.match(TokenType.FUNCTION)) {
-		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Function name expected"))
-
-		parser.consume(TokenType.LEFT_PAREN, ") expected")
-		var call = [ "function ", name, "(" ]
-
-		if (scanner.current.type != TokenType.RIGHT_PAREN) {
-			do {
-				call.push(parser.parseExpression())
-
-				if (scanner.current.type == TokenType.COMMA) {
-					call.push(", ")
-				}
-			} while (parser.match(TokenType.COMMA))
-		}
-
-		parser.consume(TokenType.RIGHT_PAREN, ") expected")
-
-		call.push(")")
-		call.push(" {\n")
-		call.push(parser.parseBlock())
-		call.push("\n")
-
-		return call.join("")
+		return parser.parseFunction()
 	}
 
 	return parser.parseExpressionStatement()
