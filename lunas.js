@@ -16,6 +16,7 @@ var TokenType = {
 	STAR : "*",
 	COLON : ":",
 	SLASH_SLASH : "//",
+	CELL : "#",
 
 	TILDE : "~",
 	TILDE_EQUAL : "~=",
@@ -234,6 +235,7 @@ scanner.scanToken = function() {
 		case ".": return scanner.createToken(TokenType.DOT)
 		case ",": return scanner.createToken(TokenType.COMMA)
 		case "=": return scanner.createToken(TokenType.EQUAL)
+		case "#": return scanner.createToken(TokenType.CELL)
 
 		case "/": return scanner.decideToken("/", TokenType.SLASH_SLASH, TokenType.SLASH)
 		case ">": return scanner.decideToken("=", TokenType.GREATER_EQUAL, TokenType.GREATER)
@@ -463,16 +465,27 @@ parser.parseCall = function() {
 		var index = parser.parseExpression()
 
 		parser.consume(TokenType.RIGHT_BRACKET, "] expected")
+		parser.usedFunctions["__index"] = true
 
-		expr = [ expr, "[", index, "]" ].join("")
+		if (scanner.current.type == TokenType.EQUAL) {
+			expr = [ expr, "[" , index, "]" ].join("")
+		} else {
+			if (index.charAt(0) == "\"") {
+				expr = [ "__index(", expr, ", " , index, ")" ].join("")
+			} else {
+				expr = [ "__index(", expr, ", \"", index, "\")" ].join("")
+			}
+		}
 	}
 
 	while (true) {
 		if (parser.match(TokenType.LEFT_PAREN)) {
 			var call = []
+			parser.metaUnaryMethods["__call"] = true
 
+			call.push("__call(")
 			call.push(expr)
-			call.push("(")
+			call.push(", [")
 
 			if (parser.addSelf) {
 				call.push(parser.addSelf)
@@ -491,7 +504,7 @@ parser.parseCall = function() {
 
 			parser.consume(TokenType.RIGHT_PAREN, ") expected")
 
-			call.push(")")
+			call.push("])")
 			expr = call.join("")
 		} else if (parser.match(TokenType.DOT) || parser.match(TokenType.COLON)) {
 			if (scanner.previous.type == TokenType.COLON) {
@@ -499,7 +512,13 @@ parser.parseCall = function() {
 			}
 
 			var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "property name expected"))
-			expr = [ expr, ".", name ].join("")
+			parser.usedFunctions["__index"] = true
+
+			if (scanner.current.type == TokenType.EQUAL) {
+				expr = [ expr, ".", name ].join("")
+			} else {
+				 expr = [ "__index(", expr, ", \"", name, "\")" ].join("")
+			}
 		} else {
 			break
 		}
@@ -516,15 +535,18 @@ var metaMethods = {
 	"//" : "__idiv"
 }
 
+var unaryMetaMethods = {
+	"-" : "__unm",
+	"#" : "__len",
+	"not" : "__not",
+	"call" : "__call"
+}
+
 parser.parseUnary = function() {
-	if (parser.matches([ TokenType.MINUS, TokenType.NOT ])) {
-		var literal = getLiteral(scanner.previous)
-
-		if (literal == "not") {
-			literal = "!"
-		}
-
-		return [ literal, parser.parseUnary() ].join("")
+	if (parser.matches([ TokenType.MINUS, TokenType.NOT, TokenType.CELL ])) {
+		var name = unaryMetaMethods[getLiteral(scanner.previous)]
+		parser.metaUnaryMethods[name] = true
+		return [ name, "(", parser.parseUnary(), ")" ].join("")
 	}
 
 	return parser.parseCall()
@@ -794,6 +816,7 @@ lunas.compile = function(source) {
 	parser.depth = ""
 	parser.usedFunctions = []
 	parser.metaBinaryMethods = []
+	parser.metaUnaryMethods = []
 
 	var js = []
 	scanner.next()
@@ -811,12 +834,33 @@ lunas.compile = function(source) {
 
 				data.push(`function ${name}(a, b) {
 	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.${name} === "function") {
-
 		return a.__metatable.${name}(a, b)
 	} else {
 		return ${name == "__idiv" ? `(a/b>>0)` : `a ${op} b`}
 	}
 }\n`)
+			}
+
+			for (var name in parser.metaUnaryMethods) {
+				var op = getKeyByValue(unaryMetaMethods, name)
+
+				if (name == "__call") {
+					data.push(`function __call(a, args) {
+	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.__call === "function") {
+		return a.__metatable.__call.apply(null, args)
+	} else {
+		return a.apply(null, args)
+	}
+}\n`)
+				} else {
+					data.push(`function ${name}(a) {
+	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.${name} === "function") {
+		return a.__metatable.${name}(a)
+	} else {
+		return ${name == "__len" ? `(typeof a === "object" ? Object.keys(a).length : a.length - 1)` : (name == "__not" ? "!a": `${op} a`)}
+	}
+}\n`)
+				}
 			}
 
 			for (var name in parser.usedFunctions) {
@@ -846,3 +890,11 @@ std.setmetatable = `\nfunction setmetatable(t, m) {
 		t.__metatable = m
 	}
 }\n`
+
+std.__index = `\nfunction __index(a, i) {
+	if (typeof a === "object" && a[i] == null && typeof a.__metatable === "object" && typeof a.__metatable.__index === "function") {
+		return a.__metatable.__index(a, i)
+	} else {
+		return a[i]
+	}
+}`
