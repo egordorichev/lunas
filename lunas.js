@@ -41,7 +41,8 @@ var TokenType = {
 	NOT : "not",
 	END : "end",
 	THEN : "then",
-	ELSEIF : "elseif"
+	ELSEIF : "elseif",
+	DO : "do"
 }
 
 var keywords = {
@@ -60,7 +61,8 @@ var keywords = {
 	"not" : TokenType.NOT,
 	"end" : TokenType.END,
 	"then" : TokenType.THEN,
-	"elseif" : TokenType.ELSEIF
+	"elseif" : TokenType.ELSEIF,
+	"do" : TokenType.DO
 }
 
 var scanner = {}
@@ -397,8 +399,28 @@ parser.parseEquality = function() {
 	return expr
 }
 
-parser.parseAssigment = function() {
+parser.parseAnd = function() {
 	var expr = parser.parseEquality()
+
+	while (parser.match(TokenType.AND)) {
+		expr = [ expr, " && ", parser.parseEquality() ].join("")
+	}
+
+	return expr
+}
+
+parser.parseOr = function() {
+	var expr = parser.parseAnd()
+
+	while (parser.match(TokenType.OR)) {
+		expr = [ expr, " || ", parser.parseAnd() ].join("")
+	}
+
+	return expr
+}
+
+parser.parseAssigment = function() {
+	var expr = parser.parseOr()
 
 	if (parser.match(TokenType.EQUAL)) {
 		return [ expr, " = ", parser.parseAssigment() ].join("")
@@ -467,6 +489,13 @@ parser.parseStatement = function() {
 		}
 
 		return statement.join("")
+	}
+
+	if (parser.match(TokenType.WHILE)) {
+		var condition = parser.parseExpression()
+		parser.consume(TokenType.DO, "DO expected after condition")
+
+		return [ "while (", condition, ") {\n", parser.parseBlock() ].join("")
 	}
 
 	return parser.parseExpressionStatement()
