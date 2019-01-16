@@ -8,13 +8,17 @@
   </head>
   <body>
 <textarea id="lua_code" rows="8" cols="80">
-me = { name = "Egor" }
+vec = {
+	x = 10,
+	y = 32,
+ 	__add = function(self, n)
+		return { x = self.x + n, y = self.y + n }
+	end
+}
 
-function me:test()
- print(self.name)
-end
+setmetatable(vec, vec)
+print(vec + 10)
 
-me:test()
 </textarea>
     <div id="js_code">
 

@@ -15,6 +15,7 @@ var TokenType = {
 	SLASH : "/",
 	STAR : "*",
 	COLON : ":",
+	SLASH_SLASH : "//",
 
 	TILDE : "~",
 	TILDE_EQUAL : "~=",
@@ -232,9 +233,9 @@ scanner.scanToken = function() {
 		case "*": return scanner.createToken(TokenType.STAR)
 		case ".": return scanner.createToken(TokenType.DOT)
 		case ",": return scanner.createToken(TokenType.COMMA)
-		case "/": return scanner.createToken(TokenType.SLASH)
 		case "=": return scanner.createToken(TokenType.EQUAL)
 
+		case "/": return scanner.decideToken("/", TokenType.SLASH_SLASH, TokenType.SLASH)
 		case ">": return scanner.decideToken("=", TokenType.GREATER_EQUAL, TokenType.GREATER)
 		case "<": return scanner.decideToken("=", TokenType.LESS_EQUAL, TokenType.LESS)
 		case "~": return scanner.decideToken("=", TokenType.TILDE_EQUAL, TokenType.TILDE)
@@ -314,11 +315,7 @@ function getLiteral(token) {
 parser.parsePrimary = function() {
 	if (parser.match(TokenType.IDENTIFIER)) {
 		var literal = getLiteral(scanner.previous)
-
-		if (!parser.usedPrint && expr == "print") {
-			parser.usedPrint = true
-			call.push("print = console.log\n")
-		}
+		parser.usedFunctions[literal] = true
 
 		return literal
 	}
@@ -344,6 +341,10 @@ parser.parsePrimary = function() {
 	}
 
 	if (parser.match(TokenType.LEFT_BRACE)) {
+		if (parser.match(TokenType.RIGHT_BRACE)) {
+			return "{}"
+		}
+
 		var decided = false
 		var array = false
 		var expression = []
@@ -364,7 +365,7 @@ parser.parsePrimary = function() {
 				hadBracket = true
 			}
 
-			var key = parser.parsePrimary()
+			var key = parser.parseEquality()
 
 			if (hadBracket) {
 				parser.consume(TokenType.RIGHT_BRACKET, "] expected")
@@ -408,6 +409,7 @@ parser.parsePrimary = function() {
 					expression.push(" }\n")
 					break
 				} else {
+					parser.consume(TokenType.COMMA, ", expected")
 					expression.push(", ")
 				}
 			}
@@ -506,6 +508,14 @@ parser.parseCall = function() {
 	return expr
 }
 
+var metaMethods = {
+	"+" : "__add",
+	"-" : "__sub",
+	"*" : "__mul",
+	"/" : "__div",
+	"//" : "__idiv"
+}
+
 parser.parseUnary = function() {
 	if (parser.matches([ TokenType.MINUS, TokenType.NOT ])) {
 		var literal = getLiteral(scanner.previous)
@@ -523,8 +533,10 @@ parser.parseUnary = function() {
 parser.parseMultiplication = function() {
 	var expr = parser.parseUnary()
 
-	while (parser.matches([ TokenType.STAR, TokenType.SLASH ])) {
-		expr = [ expr, " ", getLiteral(scanner.previous), " ", parser.parseUnary() ].join("")
+	while (parser.matches([ TokenType.STAR, TokenType.SLASH, TokenType.SLASH_SLASH ])) {
+		var name = metaMethods[getLiteral(scanner.previous)]
+		parser.metaBinaryMethods[name] = true
+		expr = [ name, "(", expr, ", ", parser.parseUnary(), ")" ].join("")
 	}
 
 	return expr
@@ -534,7 +546,9 @@ parser.parseAddition = function() {
 	var expr = parser.parseMultiplication()
 
 	while (parser.matches([ TokenType.PLUS, TokenType.MINUS ])) {
-		expr = [ expr, " ", getLiteral(scanner.previous), " ", parser.parseMultiplication() ].join("")
+		var name = metaMethods[getLiteral(scanner.previous)]
+		parser.metaBinaryMethods[name] = true
+		expr = [ name, "(", expr, ", ", parser.parseUnary(), ")" ].join("")
 	}
 
 	return expr
@@ -768,13 +782,18 @@ parser.parseStatement = function() {
 	return parser.parseExpressionStatement()
 }
 
+function getKeyByValue(object, value) {
+  return Object.keys(object).find(key => object[key] === value);
+}
+
 var lunas = {}
 
 lunas.compile = function(source) {
 	scanner.setSource(source)
 	parser.hadError = false
 	parser.depth = ""
-	parser.usedPrint = false
+	parser.usedFunctions = []
+	parser.metaBinaryMethods = []
 
 	var js = []
 	scanner.next()
@@ -785,9 +804,45 @@ lunas.compile = function(source) {
 				return null
 			}
 
-			return js.join("")
+			var data = []
+
+			for (var name in parser.metaBinaryMethods) {
+				var op = getKeyByValue(metaMethods, name)
+
+				data.push(`function ${name}(a, b) {
+	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.${name} === "function") {
+
+		return a.__metatable.${name}(a, b)
+	} else {
+		return ${name == "__idiv" ? `(a/b>>0)` : `a ${op} b`}
+	}
+}\n`)
+			}
+
+			for (var name in parser.usedFunctions) {
+				data.push(std[name])
+			}
+
+			return data.join("") + js.join("")
 		}
 
 		js.push(parser.parseStatement())
 	}
 }
+
+var std = {}
+
+std.print = "\nprint = console.log\n"
+std.getmetatable = `\nfunction getmetatable(t) {
+	if (typeof t === "object") {
+		return t.__metatable
+	}
+
+	return null
+}\n`
+
+std.setmetatable = `\nfunction setmetatable(t, m) {
+	if (typeof t === "object") {
+		t.__metatable = m
+	}
+}\n`
