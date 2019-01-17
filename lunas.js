@@ -8,6 +8,12 @@
  * table.__gc
  */
 
+ /*
+  * Things to implement:
+	* vargs (...)
+	* ipairs / pairs / for loop for them
+	*/
+
 var TokenType = {
 	EOF : "EOF",
 	ERROR : "Error",
@@ -605,7 +611,6 @@ parser.parseComparison = function() {
 
 parser.parseEquality = function() {
 	var expr = parser.parseComparison()
-	console.log(scanner.current.type)
 
 	while (parser.matches([ TokenType.EQUAL_EQUAL, TokenType.TILDE_EQUAL ])) {
 		parser.usedFunctions["__eq"] = true
@@ -936,4 +941,14 @@ std.__eq = `\nfunction __eq(a, b) {
 	} else {
 		return a == b
 	}
+}\n`
+
+std.type = `\nfunction type(o) {
+	if (o == null || o == undefined) {
+		return "nil"
+	} else if (typeof o == "object") {
+		return "table"
+	}
+
+	return typeof o
 }\n`
