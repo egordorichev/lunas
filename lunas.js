@@ -13,7 +13,6 @@
 	* vargs (...)
 	* ipairs / pairs / for loop for them
 	* multiple function return values
-	* local a, b, c = 30, 32, 18
 	*/
 
 var TokenType = {
@@ -338,10 +337,36 @@ function getLiteral(token) {
 
 parser.parsePrimary = function() {
 	if (parser.match(TokenType.IDENTIFIER)) {
-		var literal = getLiteral(scanner.previous)
-		parser.usedFunctions[literal] = true
+		if (parser.multipleAssign) {
+			var literal = getLiteral(scanner.previous)
+			parser.usedFunctions[literal] = true
 
-		return literal
+			return literal
+		}
+
+		var code = []
+
+		do {
+			var literal = getLiteral(scanner.previous)
+			parser.usedFunctions[literal] = true
+
+			if (code.length == 0 && scanner.current.type == TokenType.COMMA) {
+				parser.multipleAssign = true
+				code.push("[ ")
+			}
+
+			code.push(literal)
+
+			if (scanner.current.type == TokenType.COMMA) {
+				code.push(", ")
+			}
+		} while (parser.match(TokenType.COMMA) && parser.match(TokenType.IDENTIFIER))
+
+		if (parser.multipleAssign) {
+			code.push(" ]")
+		}
+
+		return code.join("")
 	}
 
 	if (parser.match(TokenType.NUMBER)) {
@@ -646,7 +671,24 @@ parser.parseAssigment = function() {
 	var expr = parser.parseOr()
 
 	if (parser.match(TokenType.EQUAL)) {
-		return [ expr, " = ", parser.parseAssigment() ].join("")
+		if (parser.multipleAssign) {
+			var code = [ expr, " = [ " ]
+
+			do {
+				code.push(parser.parseExpression())
+
+				if (scanner.current.type == TokenType.COMMA) {
+					code.push(", ")
+				}
+			} while (parser.match(TokenType.COMMA))
+
+			code.push(" ]")
+			parser.multipleAssign = false
+
+			return code.join("")
+		} else {
+			return [ expr, " = ", parser.parseAssigment() ].join("")
+		}
 	}
 
 	return expr
@@ -848,7 +890,7 @@ parser.parseStatement = function() {
 				code.push(", ")
 				code.push(parser.parseExpression())
 			}
-	
+
 			if (num > 0) {
 				code.push(" ]")
 			}
@@ -878,6 +920,7 @@ lunas.compile = function(source) {
 	parser.usedFunctions = []
 	parser.metaBinaryMethods = []
 	parser.metaUnaryMethods = []
+	parser.multipleAssign = false
 
 	var js = []
 	scanner.next()
