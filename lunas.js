@@ -12,6 +12,8 @@
   * Things to implement:
 	* vargs (...)
 	* ipairs / pairs / for loop for them
+	* multiple function return values
+	* local a, b, c = 30, 32, 18
 	*/
 
 var TokenType = {
@@ -811,14 +813,49 @@ parser.parseStatement = function() {
 			return parser.parseFunction()
 		}
 
+		var code = [ "var " ]
 		var name = getLiteral(parser.consume(TokenType.IDENTIFIER, "Expected local variable name"))
-		var init = "null"
+		var num = 0
 
-		if (parser.match(TokenType.EQUAL)) {
-			init = parser.parseExpression()
+		if (parser.match(TokenType.COMMA)) {
+			code.push("[ ")
 		}
 
-		return [ "var ", name, " = ", init, "\n" ].join("")
+		code.push(name)
+
+		if (scanner.previous.type == TokenType.COMMA) {
+			do {
+				num ++
+				code.push(", ")
+				code.push(getLiteral(parser.consume(TokenType.IDENTIFIER, "Expected local variable name")))
+			} while (parser.match(TokenType.COMMA))
+		}
+
+		if (num > 0) {
+			code.push(" ]")
+		}
+
+		if (parser.match(TokenType.EQUAL)) {
+			code.push(" = ")
+
+			if (num > 0) {
+				code.push("[ ")
+			}
+
+			code.push(parser.parseExpression())
+
+			while (parser.match(TokenType.COMMA)) {
+				code.push(", ")
+				code.push(parser.parseExpression())
+			}
+	
+			if (num > 0) {
+				code.push(" ]")
+			}
+		}
+
+		code.push("\n")
+		return code.join("")
 	}
 
 	if (parser.match(TokenType.FUNCTION)) {
