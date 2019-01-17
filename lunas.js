@@ -246,7 +246,6 @@ scanner.scanToken = function() {
 		case "-": return scanner.createToken(TokenType.MINUS)
 		case "*": return scanner.createToken(TokenType.STAR)
 		case ",": return scanner.createToken(TokenType.COMMA)
-		case "=": return scanner.createToken(TokenType.EQUAL)
 		case "#": return scanner.createToken(TokenType.CELL)
 		case "%": return scanner.createToken(TokenType.PERCENT)
 		case "^": return scanner.createToken(TokenType.CARET)
@@ -814,7 +813,7 @@ parser.parseStatement = function() {
 			init = parser.parseExpression()
 		}
 
-		return [ "var ", name, " = ", init ].join("")
+		return [ "var ", name, " = ", init, "\n" ].join("")
 	}
 
 	if (parser.match(TokenType.FUNCTION)) {
@@ -890,7 +889,11 @@ lunas.compile = function(source) {
 			}
 
 			for (var name in parser.usedFunctions) {
-				data.push(std[name])
+				var fn = std[name]
+
+				if (fn) {
+					data.push(fn)
+				}
 			}
 
 			return data.join("") + js.join("")
@@ -923,9 +926,9 @@ std.__index = `\nfunction __index(a, i) {
 	} else {
 		return a[i]
 	}
-}`
+}\n`
 
-std.__eq = `\nfunction __index(a, b) {
+std.__eq = `\nfunction __eq(a, b) {
 	if (typeof a === "object" && typeof b === "object" && typeof a.__metatable === "object"
 			&& a.__metatable == b.__metatable) {
 
@@ -933,4 +936,4 @@ std.__eq = `\nfunction __index(a, b) {
 	} else {
 		return a == b
 	}
-}`
+}\n`
