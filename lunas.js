@@ -11,7 +11,6 @@
  /*
   * Things to implement:
 	* vargs (...)
-	* arrays start from 1
 	* ipairs / pairs / for loop for them
 	*/
 
