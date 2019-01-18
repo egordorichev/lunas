@@ -8,7 +8,9 @@
   </head>
   <body>
 <textarea id="lua_code" rows="8" cols="80">
-a = {32}
+for k, v in pairs({ x = 32, y = 64 }) do
+	print(k .. " = " .. v)
+end
 </textarea>
     <div id="js_code">
 

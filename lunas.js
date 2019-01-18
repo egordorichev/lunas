@@ -36,6 +36,7 @@ var TokenType = {
 	PERCENT : "%",
 	CARET : "^",
 	DOT_DOT : "..",
+	DOT_DOT_DOT : "...",
 
 	TILDE : "~",
 	TILDE_EQUAL : "~=",
@@ -102,6 +103,10 @@ scanner.createToken = function(type) {
 
 scanner.decideToken = function(expected, a, b) {
 	return scanner.createToken(scanner.match(expected) ? a : b)
+}
+
+scanner.decideTokens = function(e1, e2, a, b, c) {
+	return scanner.createToken(scanner.match(e1) ? (scanner.match(e2) ? a : b) : c)
 }
 
 scanner.setSource = function(source) {
@@ -261,7 +266,7 @@ scanner.scanToken = function() {
 		case "<": return scanner.decideToken("=", TokenType.LESS_EQUAL, TokenType.LESS)
 		case "~": return scanner.decideToken("=", TokenType.TILDE_EQUAL, TokenType.TILDE)
 		case "=": return scanner.decideToken("=", TokenType.EQUAL_EQUAL, TokenType.EQUAL)
-		case ".": return scanner.decideToken(".", TokenType.DOT_DOT, TokenType.DOT)
+		case ".": return scanner.decideTokens(".", ".", TokenType.DOT_DOT_DOT, TokenType.DOT_DOT, TokenType.DOT)
 
 		case "\"": {
 			while (scanner.peek() != "\"" && !scanner.isAtEnd()) {
@@ -530,7 +535,6 @@ parser.parseCall = function() {
 	while (true) {
 		if (parser.match(TokenType.LEFT_PAREN)) {
 			var call = []
-			var numParens = 0
 
 			parser.metaUnaryMethods["__call"] = true
 			parser.usedFunctions["__join"] = true
@@ -546,27 +550,21 @@ parser.parseCall = function() {
 
 			if (scanner.current.type != TokenType.RIGHT_PAREN) {
 				call.push("__join(")
-				numParens ++
 
 				do {
 					call.push(parser.parseExpression())
 
 					if (scanner.current.type == TokenType.COMMA) {
-						numParens ++
-						call.push(".concat(")
+						call.push(").concat(")
 					}
 				} while (parser.match(TokenType.COMMA))
 			} else {
 				call.push("[]")
 			}
 
-			for (var i = 0; i < numParens; i++) {
-				call.push(")")
-			}
-
 			parser.consume(TokenType.RIGHT_PAREN, ") expected")
 
-			call.push(")")
+			call.push("))")
 			expr = call.join("")
 		} else if (parser.match(TokenType.DOT) || parser.match(TokenType.COLON)) {
 			if (scanner.previous.type == TokenType.COLON) {
@@ -793,6 +791,11 @@ parser.parseFunction = function() {
 		}
 
 		do {
+			if (parser.match(TokenType.DOT_DOT_DOT)) {
+				call.push("arg")
+				break
+			}
+
 			call.push(getLiteral(parser.consume(TokenType.IDENTIFIER, "Arg name expected")))
 
 			if (scanner.current.type == TokenType.COMMA) {
@@ -992,11 +995,21 @@ lunas.compile = function(source) {
 				if (name == "__call") {
 					data.push(`function __call(a, args) {
 	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.__call === "function") {
-		return a.__metatable.__call.apply(null, args)
+		return a.__metatable.__call.apply(null, __varg(args, a.__metatable.__call.length))
 	} else {
-		return a.apply(null, args)
+		return a.apply(null, __varg(args, a.length))
 	}
-}\n`)
+}
+
+function __varg(args, count) {
+	/*if (args.lenght <= count) {
+		return args
+	}
+
+	return args.slice(0, count - 1).concat([args.slice(count - 1, args.length)])*/
+	return args // fixme: slice for vargs
+}
+\n`)
 				} else {
 					data.push(`function ${name}(a) {
 	if (typeof a === "object" && typeof a.__metatable === "object" && typeof a.__metatable.${name} === "function") {
@@ -1079,4 +1092,8 @@ std.__join = `\nfunction __join(o) {
 	}
 
 	return [o]
+}\n`
+
+std.pairs = `\nfunction pairs(o) {
+
 }\n`
