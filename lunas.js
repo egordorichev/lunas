@@ -792,7 +792,7 @@ parser.parseFunction = function() {
 		}
 
 		do {
-			call.push(parser.parseExpression())
+			call.push(getLiteral(parser.consume(TokenType.IDENTIFIER, "Arg name expected")))
 
 			if (scanner.current.type == TokenType.COMMA) {
 				call.push(", ")
