@@ -396,8 +396,10 @@ parser.parsePrimary = function() {
 		var decided = false
 		var array = false
 		var expression = []
+		var i = 0
 
 		while (!parser.match(TokenType.RIGHT_BRACE)) {
+			i++
 			var hadBracket = false
 
 			if (parser.match(TokenType.LEFT_BRACKET)) {
@@ -423,18 +425,17 @@ parser.parsePrimary = function() {
 				if (!decided) {
 					decided = true
 					array = true
-
-					// FIXME
-					// expression.push("[ 0, ")
-					expression.push("[ ")
+					expression.push("{ ")
 				} else if (!array) {
 					parser.error("Syntax error");
 				}
 
+				expression.push(i)
+				expression.push(" : ")
 				expression.push(key)
 
 				if (scanner.previous.type == TokenType.RIGHT_BRACE) {
-					expression.push(" ]\n")
+					expression.push(" }\n")
 					break
 				} else {
 					expression.push(", ")
@@ -1043,7 +1044,7 @@ std.__index = `\nfunction __index(a, i, o) {
 	if (typeof a === "object" && a[i] == null && typeof a.__metatable === "object" && typeof a.__metatable.__index === "function") {
 		return a.__metatable.__index(a, i)
 	} else {
-		return a[Array.isArray(a) ? o - 1 : i]
+		return a[i]
 	}
 }\n`
 
