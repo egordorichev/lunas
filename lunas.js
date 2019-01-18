@@ -13,7 +13,6 @@
 	* vargs (...)
 	* arrays start from 1
 	* ipairs / pairs / for loop for them
-	* multiple function return -> assigning to multiple variables
 	*/
 
 var TokenType = {
@@ -521,9 +520,9 @@ parser.parseCall = function() {
 			expr = [ expr, "[" , index, "]" ].join("")
 		} else {
 			if (index.charAt(0) == "\"") {
-				expr = [ "__index(", expr, ", " , index, ")" ].join("")
+				expr = [ "__index(", expr, ", " , index, ", ", index, ")" ].join("")
 			} else {
-				expr = [ "__index(", expr, ", \"", index, "\")" ].join("")
+				expr = [ "__index(", expr, ", \"", index, "\", ", index, ")" ].join("")
 			}
 		}
 	}
@@ -1028,11 +1027,11 @@ std.setmetatable = `\nfunction setmetatable(t, m) {
 	}
 }\n`
 
-std.__index = `\nfunction __index(a, i) {
+std.__index = `\nfunction __index(a, i, o) {
 	if (typeof a === "object" && a[i] == null && typeof a.__metatable === "object" && typeof a.__metatable.__index === "function") {
 		return a.__metatable.__index(a, i)
 	} else {
-		return a[i]
+		return a[Array.isArray(a) ? o - 1 : i]
 	}
 }\n`
 
