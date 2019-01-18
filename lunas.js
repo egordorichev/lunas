@@ -11,6 +11,7 @@
  /*
   * Things to implement:
 	* vargs (...)
+	* arrays start from 1
 	* ipairs / pairs / for loop for them
 	* multiple function return -> assigning to multiple variables
 	*/
@@ -370,7 +371,7 @@ parser.parsePrimary = function() {
 	}
 
 	if (parser.match(TokenType.NUMBER)) {
-		return parseFloat(getLiteral(scanner.previous))
+		return getLiteral(scanner.previous)
 	}
 
 	if (parser.match(TokenType.STRING)) {
@@ -425,7 +426,9 @@ parser.parsePrimary = function() {
 					decided = true
 					array = true
 
-					expression.push("[ 0, ")
+					// FIXME
+					// expression.push("[ 0, ")
+					expression.push("[ ")
 				} else if (!array) {
 					parser.error("Syntax error");
 				}
@@ -667,25 +670,36 @@ parser.parseOr = function() {
 	return expr
 }
 
+function endsWith(str, suffix) {
+  return str.indexOf(suffix, str.length - suffix.length) !== -1;
+};
+
 parser.parseAssigment = function() {
 	var expr = parser.parseOr()
 
 	if (parser.match(TokenType.EQUAL)) {
 		if (parser.multipleAssign) {
-			var code = [ expr, " = [ " ]
+			var code = []
+			var numParens = 0
+			parser.usedFunctions["__join"] = true
 
 			do {
+				code.push("__join(")
 				code.push(parser.parseExpression())
 
 				if (scanner.current.type == TokenType.COMMA) {
-					code.push(", ")
+					numParens ++
+					code.push(").concat(")
 				}
 			} while (parser.match(TokenType.COMMA))
 
-			code.push(" ]")
+			for (var i = 0; i <= numParens; i++) {
+				code.push(")")
+			}
+
 			parser.multipleAssign = false
 
-			return code.join("")
+			return `${expr} = ${code.join("")}`
 		} else {
 			return [ expr, " = ", parser.parseAssigment() ].join("")
 		}
@@ -1045,4 +1059,12 @@ std.type = `\nfunction type(o) {
 // Maaagic
 std.unpack = `\nfunction unpack(o) {
 	return o
+}\n`
+
+std.__join = `\nfunction __join(o) {
+	if (Array.isArray(o)) {
+		return o
+	}
+
+	return [o]
 }\n`
