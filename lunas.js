@@ -529,11 +529,14 @@ parser.parseCall = function() {
 	while (true) {
 		if (parser.match(TokenType.LEFT_PAREN)) {
 			var call = []
+			var numParens = 0
+
 			parser.metaUnaryMethods["__call"] = true
+			parser.usedFunctions["__join"] = true
 
 			call.push("__call(")
 			call.push(expr)
-			call.push(", [")
+			call.push(", ")
 
 			if (parser.addSelf) {
 				call.push(parser.addSelf)
@@ -541,18 +544,28 @@ parser.parseCall = function() {
 			}
 
 			if (scanner.current.type != TokenType.RIGHT_PAREN) {
+				call.push("__join(")
+				numParens ++
+
 				do {
 					call.push(parser.parseExpression())
 
 					if (scanner.current.type == TokenType.COMMA) {
-						call.push(", ")
+						numParens ++
+						call.push(".concat(")
 					}
 				} while (parser.match(TokenType.COMMA))
+			} else {
+				call.push("[]")
+			}
+
+			for (var i = 0; i < numParens; i++) {
+				call.push(")")
 			}
 
 			parser.consume(TokenType.RIGHT_PAREN, ") expected")
 
-			call.push("])")
+			call.push(")")
 			expr = call.join("")
 		} else if (parser.match(TokenType.DOT) || parser.match(TokenType.COLON)) {
 			if (scanner.previous.type == TokenType.COLON) {
