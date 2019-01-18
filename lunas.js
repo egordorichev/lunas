@@ -12,7 +12,7 @@
   * Things to implement:
 	* vargs (...)
 	* ipairs / pairs / for loop for them
-	* multiple function return values
+	* multiple function return -> assigning to multiple variables
 	*/
 
 var TokenType = {
@@ -844,9 +844,18 @@ parser.parseStatement = function() {
 		var next = scanner.current.type
 
 		if (next == TokenType.END || next == TokenType.ELSE || next == TokenType.ELSEIF) {
-			return "return null\n"
+			return "return []\n"
 		} else {
-			return [ "return ", parser.parseExpression(), "\n" ].join("")
+			var code = [ "return [ ", parser.parseExpression() ]
+
+			while (parser.match(TokenType.COMMA)) {
+				code.push(", ")
+				code.push(parser.parseExpression())
+			}
+
+			code.push(" ]\n")
+
+			return code.join("")
 		}
 	}
 
@@ -1031,4 +1040,9 @@ std.type = `\nfunction type(o) {
 	}
 
 	return typeof o
+}\n`
+
+// Maaagic
+std.unpack = `\nfunction unpack(o) {
+	return o
 }\n`
